@@ -355,3 +355,110 @@ limitations under the License.
 Built using:
 - [google/generative-ai-go](https://github.com/google/generative-ai-go) - Official Gemini SDK
 - [urfave/cli](https://github.com/urfave/cli) - CLI framework
+
+
+
+# Local SSL
+
+To switch the listener to port **11443**, you just need to update the port mapping in your `docker-compose.yml` and ensure the internal Nginx configuration matches.
+
+Here are the updated files and the final environment configuration:
+
+### 1. Updated `docker-compose.yml`
+
+Change the `ports` mapping for the Nginx service. We will map host port `11443` to container port `443`.
+
+```yaml
+services:
+  twin-in-disguise:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PORT=8080
+      - VERBOSE=true
+      - DEBUG=true
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "11443:443" # Changed host port to 11443
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl/server.crt:/etc/nginx/server.crt:ro
+      - ./ssl/server.key:/etc/nginx/server.key:ro
+    depends_on:
+      - twin-in-disguise
+    restart: unless-stopped
+
+```
+
+### 2. Verify `nginx.conf`
+
+Ensure your `nginx.conf` is listening on `443 ssl` inside the container (as specified in your previous project's config):
+
+```nginx
+events {
+    worker_connections 1024;
+}
+
+http {
+    server {
+        listen 443 ssl; # Container still listens on 443 internally
+        server_name localhost;
+
+        ssl_certificate /etc/nginx/server.crt;
+        ssl_certificate_key /etc/nginx/server.key;
+
+        location / {
+            proxy_pass http://twin-in-disguise:8080;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            proxy_read_timeout 300;
+        }
+    }
+}
+
+```
+
+### 3. Restart the Stack
+
+```bash
+docker compose down
+docker compose up --build -d
+
+```
+
+### 4. Update Claude Code Environment Variables
+
+Since you are now using a non-standard port, you must include it in the `ANTHROPIC_BASE_URL`.
+
+```bash
+# Point to the new port
+export ANTHROPIC_BASE_URL=https://localhost:11443
+export ANTHROPIC_AUTH_TOKEN=test
+
+# Model Configs
+export ANTHROPIC_MODEL="gemini-3-pro-preview"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="gemini-3-pro-preview"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="gemini-3-flash-preview"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="gemini-2.5-flash-lite"
+export CLAUDE_CODE_SUBAGENT_MODEL="gemini-3-pro-preview"
+
+# Crucial: Tell Node/Claude Code to trust the local cert
+export NODE_EXTRA_CA_CERTS="/Users/alexander.fedora/Code/twin-in-disguise/ssl/server.crt"
+
+```
+
+---
+
+### Troubleshooting Note
+
+If Claude Code complains about the certificate even with `NODE_EXTRA_CA_CERTS`, it may be because the certificate was generated for `localhost` but the tool is verifying the full URL. Since you're using `https://localhost:11443`, your `.NET dev-certs` should work perfectly as they are typically issued for `CN=localhost`.
+
+**Would you like me to create a small bash script (e.g., `start-claude.sh`) that sets all these variables and launches the tool for you in one command?**
