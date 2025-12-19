@@ -451,7 +451,7 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="gemini-2.5-flash-lite"
 export CLAUDE_CODE_SUBAGENT_MODEL="gemini-3-pro-preview"
 
 # Crucial: Tell Node/Claude Code to trust the local cert
-export NODE_EXTRA_CA_CERTS="/Users/alexander.fedora/Code/twin-in-disguise/ssl/server.crt"
+export NODE_EXTRA_CA_CERTS="~/Code/twin-in-disguise/ssl/server.crt"
 
 ```
 
